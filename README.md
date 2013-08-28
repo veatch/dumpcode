@@ -1,6 +1,8 @@
 dumpcode
 ========
 
+[![Build Status](https://travis-ci.org/veatch/dumpcode.png)](https://travis-ci.org/veatch/dumpcode)
+
 Fixtures slow down tests: the django test runner searches for the
 specified fixtures and reads them from the filesystem, and it does this
 for every test in the test class (search speed is improved in django 1.6).
