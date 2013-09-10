@@ -1,3 +1,5 @@
+import datetime
+import decimal
 import gzip
 import os
 import zipfile
@@ -59,6 +61,9 @@ class Command(BaseCommand):
             self.setup_name_compression_dir(fixture_label.split('.'))
 
             fixture_files = self.find_fixtures(fixture_label, self.fixture_dirs)
+
+            if not fixture_files:
+                self.stderr.write("\nCould not find fixture: %s.\n" % fixture_label)
 
             for full_path, compression_format in fixture_files:
                 try:
@@ -179,11 +184,10 @@ class JsonTranslator(object):
         Based on Deserializer in django/core/serializers/python.py
         """
         Model = _get_model(obj_json["model"])
+
         data = {Model._meta.pk.attname : Model._meta.pk.to_python(obj_json["pk"])}
         m2m_data = {}
-        imprt = 'from %s import %s' % (Model.__module__, Model._meta.object_name)
-        if imprt not in self.import_statements:
-            self.import_statements.append(imprt)
+        self.add_import('from %s import %s' % (Model.__module__, Model._meta.object_name))
 
         # Handle each field
         for (field_name, field_value) in obj_json["fields"].iteritems():
@@ -225,7 +229,9 @@ class JsonTranslator(object):
 
             # Handle all other fields
             else:
-                data[field.name] = field.to_python(field_value)
+                python_field = field.to_python(field_value)
+                data[field.name] = python_field
+                self.add_field_import(python_field)
 
         add_m2m = ['getattr(obj, "%s").add(*%s)' % (k, list(v)) for k, v in m2m_data.items() if v]
         obj_str = ''
@@ -241,12 +247,25 @@ class JsonTranslator(object):
         Print out python strings made by translate_object method as a self-contained method.
         """
         print
-        print 'def create_%s_objects():' % self.fixture_name
+        print self.get_method_name()
         for imprt in self.import_statements:
             print '%s%s' % (INDENT, imprt)
         print
         for c in self.object_setup_statements:
             print '%s%s' % (INDENT, c)
+
+    def add_import(self, imprt):
+        if imprt not in self.import_statements:
+            self.import_statements.append(imprt)
+
+    def add_field_import(self, field):
+        if isinstance(field, datetime.datetime) or isinstance(field, datetime.date) or isinstance(field, datetime.time):
+            self.add_import('import datetime')
+        elif isinstance(field, decimal.Decimal):
+            self.add_import('from decimal import Decimal')
+
+    def get_method_name(self):
+        return 'def create_%s_objects():' % self.fixture_name.replace('.', '_')
 
 
 humanize = lambda dirname: "'%s'" % dirname if dirname else 'absolute path'
